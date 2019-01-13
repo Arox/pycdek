@@ -2,9 +2,9 @@
 import json
 import hashlib
 import datetime
-import urllib2
-import StringIO
-from urllib import urlencode
+import urllib
+import io
+from urllib.parse import urlencode
 from xml.etree import ElementTree
 from abc import ABCMeta, abstractmethod
 
@@ -26,7 +26,7 @@ class AbstractOrder(object):
 
     def get_sender_postcode(self):
         """ Почтовый индекс отправителя """
-        return getattr(self, 'sender_city_postcode', '')
+        return getattr(self, 'sender_city_postcode')
 
     def get_recipient_name(self):
         """ Имя получателя """
@@ -42,7 +42,7 @@ class AbstractOrder(object):
 
     def get_recipient_postcode(self):
         """ Почтовый индекс получателя """
-        return getattr(self, 'recipient_city_postcode', '')
+        return getattr(self, 'recipient_city_postcode')
 
     def get_recipient_address_street(self):
         """ Улица адреса доставки """
@@ -120,13 +120,13 @@ class Client(object):
     @classmethod
     def _exec_request(cls, url, data, method='GET'):
         if method == 'GET':
-            request = urllib2.Request(url + '?' + urlencode(data))
+            request = urllib.Request(url + '?' + urlencode(data))
         elif method == 'POST':
-            request = urllib2.Request(url, data=data)
+            request = urllib.Request(url, data=data)
         else:
             raise NotImplementedError('Unknown method "%s"' % method)
 
-        return urllib2.urlopen(request).read()
+        return urllib.urlopen(request).read()
 
     @classmethod
     def _parse_xml(cls, data):
@@ -151,12 +151,12 @@ class Client(object):
         return result
 
     @classmethod
-    def get_shipping_cost(cls, sender_city_id, receiver_city_id, tariffs, goods):
+    def get_shipping_cost(cls, sender_city_data, recipient_city_data, tariffs, goods):
         """
         Возвращает информацию о стоимости и сроках доставки
         Для отправителя и получателя обязателен один из параметров: *_city_id или *_city_postcode внутри *_city_data
-        :param sender_city_data: ID города отправителя по базе СДЭК
-        :param recipient_city_data: ID города получателя по базе СДЭК
+        :param sender_city_data: {id: '', postcode: ''} ID и/или почтовый индекс города отправителя по базе СДЭК
+        :param recipient_city_data: {id: '', postcode: ''} ID и/или почтовый индекс города получателя по базе СДЭК
         :param tariffs: список тарифов
         :param goods: список товаров
         :returns dict
@@ -164,8 +164,10 @@ class Client(object):
         params = {
             'version': '1.0',
             'dateExecute': datetime.date.today().isoformat(),
-            'senderCityId': sender_city_id,
-            'receiverCityId': receiver_city_id,
+            'senderCityId': sender_city_data.get('id'),
+            'receiverCityId': recipient_city_data.get('id'),
+            'senderCityPostCode': sender_city_data.get('postcode'),
+            'receiverCityPostCode': recipient_city_data.get('postcode'),
             'tariffList': [{'priority': -i, 'id': tariff} for i, tariff in enumerate(tariffs, 1)],
             'goods': goods,
         }
@@ -185,7 +187,7 @@ class Client(object):
         return [cls._xml_to_dict(point) for point in xml.findall('Pvz')]
 
     def _xml_to_string(self, xml):
-        buff = StringIO.StringIO()
+        buff = io.StringIO()
         ElementTree.ElementTree(xml).write(buff, encoding='UTF-8', xml_declaration=False)
 
         return '<?xml version="1.0" encoding="UTF-8" ?>' + buff.getvalue()
@@ -331,9 +333,11 @@ class Client(object):
 
         ElementTree.SubElement(call_element, 'Address', Street=address_street, House=str(address_house), Flat=str(address_flat))
 
+        print(self._xml_to_string(call_courier_element))
+
         try:
             self._exec_xml_request(self.CALL_COURIER_URL, call_courier_element)
-        except urllib2.HTTPError:
+        except urllib.HTTPError:
             return False
         else:
             return True

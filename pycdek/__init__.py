@@ -1,5 +1,5 @@
-from client import AbstractOrder, AbstractOrderLine, Client
-VERSION = (0, 3, 1)
+from .client import AbstractOrder, AbstractOrderLine, Client
+VERSION = (0, 3, 2)
 
 
 def get_version():
